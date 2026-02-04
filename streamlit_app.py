@@ -127,7 +127,7 @@ if st.button("診断する"):
     # -----------------------------
     # Supabase に保存
     # -----------------------------
-try:
+    try:
     supabase.table("app_data").insert({
         "result": best_genre
     }).execute()
