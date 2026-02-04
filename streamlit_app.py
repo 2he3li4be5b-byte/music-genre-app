@@ -127,11 +127,13 @@ if st.button("診断する"):
     # -----------------------------
     # Supabase に保存
     # -----------------------------
+try:
     supabase.table("app_data").insert({
         "result": best_genre
     }).execute()
-
     st.success("診断結果を保存しました 🎉")
+except Exception as e:
+    st.error(e)
 
     st.subheader("📊 ジャンル別スコア")
     st.bar_chart(scores)
