@@ -1,13 +1,81 @@
 import streamlit as st
-from supabase import create_client
+import sqlite3
+from pathlib import Path
+from contextlib import closing
 
 # -----------------------------
-# Supabase 接続（最初に1回だけ）
+# SQLite3 データベース設定
 # -----------------------------
-supabase = create_client(
-    st.secrets["SUPABASE_URL"],
-    st.secrets["SUPABASE_KEY"]
-)
+# データベースファイルは、このスクリプトと同じフォルダに作成する
+DB_PATH = Path(__file__).resolve().parent / "music_genre.db"
+
+
+def get_connection():
+    """SQLite3への接続を作成する。"""
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_database():
+    """データベースとテーブルが存在しない場合は作成する。"""
+    with closing(get_connection()) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                result TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+
+
+def insert_result(result):
+    """診断結果を登録する。SQLの値にはプレースホルダーを使う。"""
+    with closing(get_connection()) as conn:
+        cursor = conn.execute(
+            "INSERT INTO app_data (result) VALUES (?)",
+            (result,)
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_results():
+    """保存済みの診断結果を新しい順に取得する。"""
+    with closing(get_connection()) as conn:
+        rows = conn.execute("""
+            SELECT id, result, created_at
+            FROM app_data
+            ORDER BY id DESC
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def update_result(record_id, new_result):
+    """指定したIDの診断結果を更新する。"""
+    with closing(get_connection()) as conn:
+        cursor = conn.execute(
+            "UPDATE app_data SET result = ? WHERE id = ?",
+            (new_result, record_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_result(record_id):
+    """指定したIDの診断結果を削除する。"""
+    with closing(get_connection()) as conn:
+        cursor = conn.execute(
+            "DELETE FROM app_data WHERE id = ?",
+            (record_id,)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# アプリ起動時にデータベースとテーブルを初期化
+init_database()
 
 st.set_page_config(page_title="音楽ジャンル診断", page_icon="🎵")
 
@@ -125,15 +193,13 @@ if st.button("診断する"):
         st.write(f"・{artist}")
 
     # -----------------------------
-    # Supabase に保存
+    # SQLite3 に保存
     # -----------------------------
     try:
-        supabase.table("app_data").insert({
-        "result": best_genre
-        }).execute()
+        insert_result(best_genre)
         st.success("診断結果を保存しました 🎉")
-    except Exception as e:
-        st.error(e)
+    except sqlite3.Error as e:
+        st.error(f"診断結果の保存に失敗しました: {e}")
 
     st.subheader("📊 ジャンル別スコア")
     st.bar_chart(scores)
